@@ -255,43 +255,6 @@ def train_diffusion(vae_model):
     print(f"Diffusion model training complete. Model saved to {DIFFUSION_MODEL_PATH}")
     return diffusion_model
 
-# --- Inference/Sampling ---
-@torch.no_grad()
-def sample(diffusion_model, vae_decoder, num_images=4, img_size_latent=LATENT_DIM):
-    print("Generating images...")
-    diffusion_model.eval()
-    vae_decoder.eval()
-
-    # Start with random noise in latent space
-    latents_t = torch.randn((num_images, img_size_latent), device=DEVICE)
-
-    for i in reversed(range(TIMESTEPS)):
-        t = torch.full((num_images,), i, device=DEVICE, dtype=torch.long)
-        
-        # Predict noise
-        predicted_noise = diffusion_model(latents_t, t)
-        
-        # Denoise step (DDPM sampling)
-        alpha_t = alphas[t].view(-1, 1)
-        alpha_cumprod_t = alphas_cumprod[t].view(-1, 1)
-        beta_t = betas[t].view(-1, 1)
-
-        if i > 0:
-            noise = torch.randn_like(latents_t)
-        else:
-            noise = torch.zeros_like(latents_t) # No noise at the last step
-
-        # x_{t-1} = 1/sqrt(alpha_t) * (x_t - (1-alpha_t)/sqrt(1-alpha_cumprod_t) * predicted_noise) + sqrt(beta_t) * noise
-        term1 = (1.0 / torch.sqrt(alpha_t))
-        term2 = (latents_t - ((1.0 - alpha_t) / torch.sqrt(1.0 - alpha_cumprod_t)) * predicted_noise)
-        latents_t = term1 * term2 + torch.sqrt(beta_t) * noise
-        
-    # Decode latents to images
-    generated_images = vae_decoder(latents_t)
-    save_image(generated_images.cpu(), os.path.join(OUTPUT_DIR, f'generated_sample_steps_{TIMESTEPS}.png'), nrow=int(math.sqrt(num_images)))
-    print(f"Generated images saved to {os.path.join(OUTPUT_DIR, f'generated_sample_steps_{TIMESTEPS}.png')}")
-
-
 if __name__ == "__main__":
     # 1. Train or load VAE
     vae = train_vae()
@@ -302,31 +265,11 @@ if __name__ == "__main__":
         vae = VAE().to(DEVICE)
         if os.path.exists(VAE_MODEL_PATH):
             vae.load_state_dict(torch.load(VAE_MODEL_PATH, map_location=DEVICE))
-            print(f"Loaded VAE from {VAE_MODEL_PATH} for diffusion training/inference.")
+            print(f"Loaded VAE from {VAE_MODEL_PATH} for diffusion training.")
         else:
             print("VAE model not found. Please train VAE first or ensure VAE_MODEL_PATH is correct.")
             exit()
             
     diffusion_model = train_diffusion(vae)
 
-    # 3. Generate images
-    # Ensure models are loaded if not trained in this session
-    if not 'diffusion_model' in locals() or diffusion_model is None:
-        diffusion_model = LatentDiffusionNet(latent_dim=LATENT_DIM).to(DEVICE)
-        if os.path.exists(DIFFUSION_MODEL_PATH):
-            diffusion_model.load_state_dict(torch.load(DIFFUSION_MODEL_PATH, map_location=DEVICE))
-            print(f"Loaded Diffusion model from {DIFFUSION_MODEL_PATH} for inference.")
-        else:
-            print("Diffusion model not found. Please train it first or ensure DIFFUSION_MODEL_PATH is correct.")
-            exit()
-
-    if not 'vae' in locals() or vae is None: # Should be loaded by now, but double check
-        vae = VAE().to(DEVICE)
-        if os.path.exists(VAE_MODEL_PATH):
-            vae.load_state_dict(torch.load(VAE_MODEL_PATH, map_location=DEVICE))
-        else: # Should not happen if diffusion training ran
-            print("VAE model not found for inference. Critical error.")
-            exit()
-            
-    sample(diffusion_model, vae.decoder, num_images=16)
-    print("Script finished.")
+    print("Training script finished. To generate images, run inference.py.")
