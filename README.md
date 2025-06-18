@@ -1,0 +1,1 @@
+A stripped back diffusion model, with the addition of a procedural noise predictor. alongside the base diffusion model, we train a noise prediction model that trains on different permutations of a procedural noise gen model. at inference time, we gen the initial noisestep from the trained noise predictor instead of random gaussian image
