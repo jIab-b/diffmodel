@@ -7,6 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from torchvision.utils import save_image
 from PIL import Image
+from automata import ProcGenMixer, NOISE_CONFIGS
 
 # --- Configuration ---
 IMG_SIZE = 64
@@ -214,6 +215,7 @@ def train_diffusion(vae_model):
     print("Training Diffusion Model...")
     diffusion_model = LatentDiffusionNet(latent_dim=LATENT_DIM).to(DEVICE)
     optimizer_diffusion = optim.Adam(diffusion_model.parameters(), lr=LR)
+    noise_mixer = ProcGenMixer(NOISE_CONFIGS)
     print('device used', DEVICE)
 
     if os.path.exists(DIFFUSION_MODEL_PATH):
@@ -237,7 +239,10 @@ def train_diffusion(vae_model):
             t = torch.randint(0, TIMESTEPS, (images.size(0),), device=DEVICE).long()
             
             # Sample noise and create noisy latents (x_t)
-            noise = torch.randn_like(latents)
+            # --- New: Generate procedural noise ---
+            # Change the config name to experiment with different noise types
+            noise = noise_mixer.generate_noise('ca_plus_perlin', latents.shape).to(DEVICE)
+            
             noisy_latents = q_sample(latents, t, noise) # x_t
 
             # Predict noise
