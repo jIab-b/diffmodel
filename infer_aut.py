@@ -5,6 +5,7 @@ from train import VAE, LatentDiffusionNet, Decoder
 from train_aut import NoiseRecommender
 from automata import ProcGenMixer, NOISE_CONFIGS
 import math
+import time
 
 # --- Configuration ---
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -68,27 +69,32 @@ if __name__ == "__main__":
         recommender = None
 
     # --- Generation ---
-    print(f"Generating {NUM_IMAGES} image(s)...")
+    print("Generating comparison image...")
     
-    # Start with random latents
-    initial_latents = torch.randn(NUM_IMAGES, LATENT_DIM, device=DEVICE)
-    
-    if recommender:
-        # Use the recommender to get the noise config
-        # As in train_aut, this is a simplified stand-in for a real parameter mapping
-        noise_mixer = ProcGenMixer(NOISE_CONFIGS)
-        initial_noise = noise_mixer.generate_noise('ca_plus_perlin', initial_latents.shape).to(DEVICE)
-    else:
-        initial_noise = torch.randn_like(initial_latents)
-
-    # The reverse diffusion process starts from the generated procedural noise
-    generated_latents = p_sample_loop(diffusion_model, initial_noise.shape, TIMESTEPS, DEVICE)
-
-    # Decode the generated latents into images
+    # --- 1. Generate with Procedural Noise ---
+    print(" - Generating with procedural noise...")
+    start_time_proc = time.time()
+    noise_mixer = ProcGenMixer(NOISE_CONFIGS)
+    proc_noise = noise_mixer.generate_noise('ca_plus_perlin', (1, LATENT_DIM)).to(DEVICE)
+    generated_latents_proc = p_sample_loop(diffusion_model, proc_noise.shape, TIMESTEPS, DEVICE)
     with torch.no_grad():
-        generated_images = vae.decoder(generated_latents)
+        generated_image_proc = vae.decoder(generated_latents_proc)
+    end_time_proc = time.time()
+    print(f"   > Procedural noise generation took: {end_time_proc - start_time_proc:.2f} seconds")
 
-    save_path = os.path.join(OUTPUT_DIR, "generated_sample_aut.png")
-    save_image(generated_images, save_path, nrow=int(math.sqrt(NUM_IMAGES)))
-    print(f"Generated images saved to {save_path}")
+    # --- 2. Generate with Standard Gaussian Noise ---
+    print(" - Generating with standard noise...")
+    start_time_std = time.time()
+    standard_noise = torch.randn(1, LATENT_DIM, device=DEVICE)
+    generated_latents_std = p_sample_loop(diffusion_model, standard_noise.shape, TIMESTEPS, DEVICE)
+    with torch.no_grad():
+        generated_image_std = vae.decoder(generated_latents_std)
+    end_time_std = time.time()
+    print(f"   > Standard noise generation took: {end_time_std - start_time_std:.2f} seconds")
+
+    # --- 3. Save side-by-side ---
+    comparison = torch.cat([generated_image_proc, generated_image_std], dim=0)
+    save_path = os.path.join(OUTPUT_DIR, "generated_comparison.png")
+    save_image(comparison, save_path, nrow=2)
+    print(f"Generated comparison image saved to {save_path} (procedural gen - left. standard gaussian - right)")
     print("Inference script finished.")

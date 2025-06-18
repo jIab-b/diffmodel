@@ -80,13 +80,17 @@ class ProcGenMixer:
     def __init__(self, configs):
         self.configs = configs
 
-    def generate_noise(self, config_name, target_shape):
-        if config_name not in self.configs:
-            raise ValueError(f"Config '{config_name}' not found.")
-        
-        config = self.configs[config_name]
-        
-        final_noise = torch.zeros(target_shape)
+    def generate_noise(self, config_name, target_shape, device=None):
+        # If initialized with a single config dict, use it directly.
+        # Otherwise, look up the config by name.
+        if 'mix' in self.configs and isinstance(self.configs['mix'], list):
+            config = self.configs
+        else:
+            if config_name not in self.configs:
+                raise ValueError(f"Config '{config_name}' not found.")
+            config = self.configs[config_name]
+
+        final_noise = torch.zeros(target_shape, device=device)
         
         for mix_item in config['mix']:
             method = mix_item['method']
@@ -94,19 +98,21 @@ class ProcGenMixer:
             weight = mix_item['weight']
             
             # Generate a 2D pattern and flatten it
-            pattern_2d = method(**params)
+            pattern_2d = method(**params) # This is a CPU tensor
             pattern_flat = pattern_2d.flatten()
             
             # Resize flat pattern to match target size
-            current_noise = torch.zeros(target_shape).flatten()
+            current_noise = torch.zeros(target_shape, device=device).flatten()
             n_elements = min(len(pattern_flat), len(current_noise))
-            current_noise[:n_elements] = pattern_flat[:n_elements]
+            # Move CPU data to the target device before assignment
+            current_noise[:n_elements] = torch.from_numpy(pattern_flat.numpy()[:n_elements]).to(device)
             current_noise = current_noise.reshape(target_shape)
 
             final_noise += weight * current_noise
             
         # Normalize
-        final_noise = (final_noise - final_noise.mean()) / final_noise.std()
+        if final_noise.std() > 1e-6:
+            final_noise = (final_noise - final_noise.mean()) / final_noise.std()
         return final_noise
 
 # --- 3. Noise Configurations ---
@@ -174,7 +180,7 @@ if __name__ == '__main__':
         print(f"  - {name}")
         
         # Generate procedural noise with the target shape of the latents
-        proc_noise = mixer.generate_noise(name, target_shape=x_start_latents.shape)
+        proc_noise = mixer.generate_noise(name, target_shape=x_start_latents.shape, device=DEVICE)
         
         # Create noisy latents using the forward process function from train.py
         t = torch.full((BATCH_SIZE,), TIMESTEP, dtype=torch.long).to(DEVICE)
