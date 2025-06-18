@@ -75,7 +75,7 @@ if __name__ == "__main__":
     print(" - Generating with procedural noise...")
     start_time_proc = time.time()
     noise_mixer = ProcGenMixer(NOISE_CONFIGS)
-    proc_noise = noise_mixer.generate_noise('ca_plus_perlin', (1, LATENT_DIM)).to(DEVICE)
+    proc_noise = noise_mixer.generate_noise('ca_plus_perlin', (1, LATENT_DIM), device=DEVICE)
     generated_latents_proc = p_sample_loop(diffusion_model, proc_noise.shape, TIMESTEPS, DEVICE)
     with torch.no_grad():
         generated_image_proc = vae.decoder(generated_latents_proc)
